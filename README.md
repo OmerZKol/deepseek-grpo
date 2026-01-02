@@ -1,6 +1,6 @@
 # DeepSeek GRPO Training
 
-Basic implementation of GRPO (Group Relative Policy Optimisation) for training small language models using reinforcement learning from human feedback (RLHF). Based on the approach from the [DeepSeekMath paper](https://arxiv.org/abs/2402.03300), further popularised by the success of [DeepSeekR1 Paper](https://arxiv.org/abs/2501.12948).
+Basic implementation of GRPO (Group Relative Policy Optimisation) for training small language models using reinforcement learning with rule-based and verifiable rewards. Based on the approach from the [DeepSeekMath paper](https://arxiv.org/abs/2402.03300), further popularised by the success of [DeepSeekR1 Paper](https://arxiv.org/abs/2501.12948).
 
 ## What is GRPO?
 
