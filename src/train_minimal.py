@@ -1,5 +1,6 @@
 import re
 import torch
+import argparse
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig
@@ -7,15 +8,15 @@ from trl import GRPOTrainer, GRPOConfig
 
 # 1. Setup Configuration
 # ----------------------
-# MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-MODEL_ID = "HuggingFaceTB/SmolLM-135M-Instruct"
+MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
+# MODEL_ID = "HuggingFaceTB/SmolLM-135M-Instruct"
 OUTPUT_DIR = "grpo-math"
 
 # GRPO specific parameters
-NUM_GENERATIONS = 8  # Group size (G): How many outputs to generate per prompt
+NUM_GENERATIONS = 10  # Group size (G): How many outputs to generate per prompt
 MAX_PROMPT_LENGTH = 256
-MAX_COMPLETION_LENGTH = 512
-BATCH_SIZE = 4       # Depending on gpu VRAM, adjust this
+MAX_COMPLETION_LENGTH = 768
+BATCH_SIZE = 5       # Increased from 4 to utilize more GPU memory
 
 # 2. Define Reward Functions
 # --------------------------
@@ -102,74 +103,128 @@ def get_gsm8k_questions(data_split="train"):
     # Return as a dictionary with the prompt and the reference answer
     return {"prompt": prompts, "answer": data["answer"]}
 
-dataset = load_dataset('openai/gsm8k', 'main')['train']
-# We map the formatting function to add the "prompt" column
-dataset = dataset.map(lambda x: {"prompt": (
-    "<|im_start|>system\n"
-    "You are a helpful logic assistant. You must output your final answer "
-    "wrapped in <answer> tags. Example: <answer>42</answer>.<|im_end|>\n"
-    "<|im_start|>user\n"
-    f"{x['question']}<|im_end|>\n"
-    "<|im_start|>assistant\n"
-)})
+def prepare_dataset(test_mode=False):
+    """
+    Prepare the GSM8K dataset for training.
 
-# 4. Load Model and Tokenizer
-# ---------------------------
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-tokenizer.pad_token = tokenizer.eos_token
+    Args:
+        test_mode: If True, only use a small subset for quick testing
 
-# Load model in half-precision (bfloat16) to save memory
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID,
-    torch_dtype=torch.bfloat16,
-    device_map="auto"
-)
+    Returns:
+        Formatted dataset ready for training
+    """
+    dataset = load_dataset('openai/gsm8k', 'main')['train']
 
-# 5. Configure LoRA (Parameter Efficient Fine-Tuning)
-# ---------------------------------------------------
-# Instead of training all 0.5B params, we train a tiny adapter.
-peft_config = LoraConfig(
-    r=16,
-    lora_alpha=64,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-    task_type="CAUSAL_LM",
-    lora_dropout=0.05,
-)
+    # In test mode, only use first 100 examples for quick iteration
+    if test_mode:
+        dataset = dataset.select(range(min(100, len(dataset))))
+        print(f"[TEST MODE] Using {len(dataset)} examples")
+    else:
+        print(f"[FULL TRAINING] Using {len(dataset)} examples")
 
-# 6. Initialize GRPO Trainer
-# --------------------------
-training_args = GRPOConfig(
-    output_dir=OUTPUT_DIR,
-    learning_rate=5e-6,           # Very low LR is key for RL stability
-    adam_beta1=0.9,
-    adam_beta2=0.99,
-    weight_decay=0.1,
-    warmup_ratio=0.1,
-    lr_scheduler_type="cosine",
-    logging_steps=1,
-    per_device_train_batch_size=BATCH_SIZE,
-    num_generations=NUM_GENERATIONS, # The G in GRPO
-    max_prompt_length=MAX_PROMPT_LENGTH,
-    max_completion_length=MAX_COMPLETION_LENGTH,
-    max_steps=100,               # Set short for testing (e.g., 100 steps)
-    save_steps=50,
-    gradient_accumulation_steps=4,
-    report_to="none"             # Change to "wandb" if you want charts
-)
+    # Map the formatting function to add the "prompt" column
+    dataset = dataset.map(lambda x: {"prompt": (
+        "<|im_start|>system\n"
+        "You are a helpful logic assistant. You must output your final answer "
+        "wrapped in <answer> tags. Example: <answer>42</answer>.<|im_end|>\n"
+        "<|im_start|>user\n"
+        f"{x['question']}<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )})
 
-trainer = GRPOTrainer(
-    model=model,
-    reward_funcs=[format_reward_func, accuracy_reward_func],
-    args=training_args,
-    train_dataset=dataset,
-    peft_config=peft_config,
-)
+    return dataset
 
-# 7. Start Training!
-# ------------------
-print("Starting GRPO training...")
-trainer.train()
+def main():
+    """Main training function with command line argument support."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="GRPO Training for Math Problem Solving")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run in test mode (small subset, limited steps for quick testing)"
+    )
+    args = parser.parse_args()
 
-# Save the final adapter
-trainer.save_model(OUTPUT_DIR)
-print(f"Model saved to {OUTPUT_DIR}")
+    # 3. Load Dataset
+    # ---------------
+    dataset = prepare_dataset(test_mode=args.test)
+
+    # 4. Load Model and Tokenizer
+    # ---------------------------
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    # Load model in half-precision (bfloat16) to save memory
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_ID,
+        dtype=torch.bfloat16,
+        device_map="auto",
+        attn_implementation="sdpa"  # Use scaled dot-product attention (faster)
+    )
+
+    # 5. Configure LoRA (Parameter Efficient Fine-Tuning)
+    # ---------------------------------------------------
+    # Instead of training all params, we train a tiny adapter.
+    peft_config = LoraConfig(
+        r=16,
+        lora_alpha=64,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        task_type="CAUSAL_LM",
+        lora_dropout=0.05,
+    )
+
+    # 6. Initialize GRPO Trainer
+    # --------------------------
+    # Determine training duration based on mode
+    if args.test:
+        max_steps = 100  # Quick test run
+        save_steps = 50
+        print("[TEST MODE] Training for 100 steps")
+    else:
+        max_steps = -1  # Train on full dataset (use num_train_epochs instead)
+        save_steps = 500
+        print("[FULL TRAINING] Training on complete dataset")
+
+    training_args = GRPOConfig(
+        output_dir=OUTPUT_DIR,
+        learning_rate=5e-6,
+        adam_beta1=0.9,
+        adam_beta2=0.99,
+        weight_decay=0.1,
+        warmup_ratio=0.1,
+        lr_scheduler_type="cosine",
+        logging_steps=5,
+        per_device_train_batch_size=BATCH_SIZE,
+        num_generations=NUM_GENERATIONS, # The G in GRPO
+        max_prompt_length=MAX_PROMPT_LENGTH,
+        max_completion_length=MAX_COMPLETION_LENGTH,
+        max_steps=max_steps,
+        num_train_epochs=1 if max_steps == -1 else None,  # Use epochs for full training
+        save_steps=save_steps,
+        gradient_accumulation_steps=2,  # Accumulate gradients to simulate larger batch size
+        gradient_checkpointing=True,    # Enable to save memory and allow larger batches
+        # dataloader_num_workers=4,       # Parallel data loading to reduce CPU bottleneck
+        report_to="tensorboard",        # Save training metrics to TensorBoard
+        logging_dir=f"logs",  # TensorBoard log directory
+    )
+
+    trainer = GRPOTrainer(
+        model=model,
+        reward_funcs=[format_reward_func, accuracy_reward_func],
+        args=training_args,
+        train_dataset=dataset,
+        peft_config=peft_config,
+    )
+
+    # 7. Start Training!
+    # ------------------
+    print("Starting GRPO training...")
+    trainer.train()
+
+    # Save the final adapter
+    trainer.save_model(OUTPUT_DIR)
+    print(f"Model saved to {OUTPUT_DIR}")
+
+
+if __name__ == "__main__":
+    main()
