@@ -112,7 +112,7 @@ def main():
         weight_decay=0.1,
         warmup_ratio=0.1,
         lr_scheduler_type="cosine",
-        logging_steps=5,
+        logging_steps=1000,
         per_device_train_batch_size=BATCH_SIZE,
         num_generations=NUM_GENERATIONS, # The G in GRPO
         max_prompt_length=MAX_PROMPT_LENGTH,
