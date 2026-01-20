@@ -24,7 +24,7 @@ OUTPUT_DIR = "grpo-math"
 NUM_GENERATIONS = 12  # Group size (G): How many outputs to generate per prompt
 MAX_PROMPT_LENGTH = 256
 MAX_COMPLETION_LENGTH = 768
-BATCH_SIZE = 6       # Increased from 4 to utilize more GPU memory
+BATCH_SIZE = 8       # Increased to better utilize GPU
 
 
 # 2. Load and Prep Dataset
@@ -52,11 +52,18 @@ def prepare_dataset(test_mode=False):
     else:
         print(f"[FULL TRAINING] Using {len(dataset)} examples")
 
-    dataset = dataset.map(lambda x: {"prompt": format_prompt(x['question'])})
+    dataset = dataset.map(
+        lambda x: {"prompt": format_prompt(x['question'])},
+        num_proc=4  # Parallel preprocessing
+    )
     return dataset
 
 def main():
     """Main training function with command line argument support."""
+    # Enable TF32 for faster training on Ampere+ GPUs (A100, RTX 3090/4090)
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="GRPO Training for Math Problem Solving")
     parser.add_argument(
@@ -122,10 +129,22 @@ def main():
         save_steps=save_steps,
         gradient_accumulation_steps=2,  # Accumulate gradients to simulate larger batch size
         gradient_checkpointing=True,    # Enable to save memory and allow larger batches
-        dataloader_num_workers=4,       # Parallel data loading to reduce CPU bottleneck
+        dataloader_num_workers=8,       # Increased workers for faster data loading
+        dataloader_pin_memory=True,     # Pin memory for faster transfers to GPU
+        dataloader_prefetch_factor=4,   # Prefetch batches to reduce waiting
         report_to="tensorboard",        # Save training metrics to TensorBoard
         logging_dir=f"logs",  # TensorBoard log directory
     )
+
+    # Generation kwargs for faster sampling during GRPO rollouts
+    generation_kwargs = {
+        "max_new_tokens": MAX_COMPLETION_LENGTH,
+        "do_sample": True,
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "pad_token_id": tokenizer.pad_token_id,
+        "eos_token_id": tokenizer.eos_token_id,
+    }
 
     trainer = GRPOTrainer(
         model=model,
@@ -133,6 +152,7 @@ def main():
         args=training_args,
         train_dataset=dataset,
         peft_config=peft_config,
+        generation_kwargs=generation_kwargs,  # Pass optimized generation config
     )
 
     # 6. Start Training!
