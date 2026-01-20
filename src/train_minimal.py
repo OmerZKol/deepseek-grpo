@@ -81,8 +81,8 @@ def main():
         attn_implementation="flash_attention_2"  # flash attention for speed
     )
 
-    # Compile model for faster training (PyTorch 2.0+)
-    model = torch.compile(model, mode="reduce-overhead")
+    # Note: torch.compile() is incompatible with PEFT/GRPO trainer
+    # Flash Attention 2 + gradient checkpointing provide significant speedup
 
     # 4. Configure LoRA
     peft_config = LoraConfig(
