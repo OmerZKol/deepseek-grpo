@@ -43,7 +43,7 @@ Train on the GSM8K dataset with format and accuracy rewards:
 # Full training (complete dataset, 1 epoch)
 python src/train_minimal.py
 
-# Test mode (50 examples, 100 steps - for quick iteration)
+# Test mode (100 examples, 100 steps - for quick iteration)
 python src/train_minimal.py --test
 ```
 
