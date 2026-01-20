@@ -1,4 +1,3 @@
-import re
 import torch
 import argparse
 from datasets import load_dataset
@@ -6,102 +5,34 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig
 from trl import GRPOTrainer, GRPOConfig
 
+from utils import (
+    ANSWER_TAG_PATTERN,
+    extract_last_number,
+    extract_answer_from_tags,
+    extract_gold_answer,
+    format_prompt,
+    format_reward_func,
+    accuracy_reward_func,
+)
+
 # 1. Setup Configuration
-# ----------------------
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 # MODEL_ID = "HuggingFaceTB/SmolLM-135M-Instruct"
 OUTPUT_DIR = "grpo-math"
 
 # GRPO specific parameters
-NUM_GENERATIONS = 10  # Group size (G): How many outputs to generate per prompt
+NUM_GENERATIONS = 12  # Group size (G): How many outputs to generate per prompt
 MAX_PROMPT_LENGTH = 256
 MAX_COMPLETION_LENGTH = 768
-BATCH_SIZE = 5       # Increased from 4 to utilize more GPU memory
+BATCH_SIZE = 6       # Increased from 4 to utilize more GPU memory
 
-# 2. Define Reward Functions
-# --------------------------
-# These functions take the model's output and the ground truth to calculate a score.
 
-def format_reward_func(completions, **kwargs):
-    """
-    Reward Structure: Checks if the completion uses the specific XML format.
-    Regex: <answer> ... </answer>
-    """
-    pattern = r"<answer>(.*?)</answer>"
-    rewards = []
-    
-    for completion in completions:
-        match = re.search(pattern, completion, flags=re.DOTALL)
-        # Give a small reward for following the format instruction
-        if match:
-            rewards.append(0.5)
-        else:
-            rewards.append(0.0)
-    return rewards
-
-def accuracy_reward_func(completions, answer, **kwargs):
-    """
-    Reward Correctness: Extracts the number from the XML and compares to ground truth.
-    """
-    pattern = r"<answer>(.*?)</answer>"
-    rewards = []
-    
-    for completion, correct_answer in zip(completions, answer):
-        match = re.search(pattern, completion, flags=re.DOTALL)
-        
-        # If no format match, they automatically fail accuracy too
-        if not match:
-            rewards.append(0.0)
-            continue
-            
-        extracted_content = match.group(1).strip()
-        
-        try:
-            # GSM8K answers often have the calculation logic. The final number is usually
-            # at the end or we can try to parse the whole string. 
-            # For this simple script, we assume the dataset 'answer' column is the numerical truth.
-            # (In raw GSM8K, we often need to extract the number after "####")
-            
-            # Simple numeric cleaning
-            pred_val = float(re.sub(r"[^\d\.]", "", extracted_content))
-            
-            # In GSM8K, the answer column is text like "The answer is 42 #### 42"
-            # We extract the number after ####
-            gold_val_str = correct_answer.split("####")[-1].strip()
-            gold_val = float(re.sub(r"[^\d\.]", "", gold_val_str))
-            
-            if abs(pred_val - gold_val) < 1e-5:
-                rewards.append(1.0) # Big reward for correct math!
-            else:
-                rewards.append(0.0)
-        except Exception:
-            # If parsing fails, 0 reward
-            rewards.append(0.0)
-            
-    return rewards
-
-# 3. Load and Prep Dataset
-# ------------------------
+# 2. Load and Prep Dataset
 def get_gsm8k_questions(data_split="train"):
     data = load_dataset('openai/gsm8k', 'main')[data_split]
-    
-    # We need to format the prompt to look like a chat interaction
-    # so the model knows it is being instructed.
-    prompts = []
-    for example in data:
-        # Structured system prompt
-        prompt = (
-            "<|im_start|>system\n"
-            "You are a helpful logic assistant. You must output your final answer "
-            "wrapped in <answer> tags. Example: <answer>42</answer>.<|im_end|>\n"
-            "<|im_start|>user\n"
-            f"{example['question']}<|im_end|>\n"
-            "<|im_start|>assistant\n"
-        )
-        prompts.append(prompt)
-        
-    # Return as a dictionary with the prompt and the reference answer
+    prompts = [format_prompt(example['question']) for example in data]
     return {"prompt": prompts, "answer": data["answer"]}
+
 
 def prepare_dataset(test_mode=False):
     """
@@ -115,23 +46,13 @@ def prepare_dataset(test_mode=False):
     """
     dataset = load_dataset('openai/gsm8k', 'main')['train']
 
-    # In test mode, only use first 100 examples for quick iteration
     if test_mode:
         dataset = dataset.select(range(min(100, len(dataset))))
         print(f"[TEST MODE] Using {len(dataset)} examples")
     else:
         print(f"[FULL TRAINING] Using {len(dataset)} examples")
 
-    # Map the formatting function to add the "prompt" column
-    dataset = dataset.map(lambda x: {"prompt": (
-        "<|im_start|>system\n"
-        "You are a helpful logic assistant. You must output your final answer "
-        "wrapped in <answer> tags. Example: <answer>42</answer>.<|im_end|>\n"
-        "<|im_start|>user\n"
-        f"{x['question']}<|im_end|>\n"
-        "<|im_start|>assistant\n"
-    )})
-
+    dataset = dataset.map(lambda x: {"prompt": format_prompt(x['question'])})
     return dataset
 
 def main():
@@ -145,12 +66,10 @@ def main():
     )
     args = parser.parse_args()
 
-    # 3. Load Dataset
-    # ---------------
+    # 2. Load Dataset
     dataset = prepare_dataset(test_mode=args.test)
 
-    # 4. Load Model and Tokenizer
-    # ---------------------------
+    # 3. Load Model and Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -159,12 +78,13 @@ def main():
         MODEL_ID,
         dtype=torch.bfloat16,
         device_map="auto",
-        attn_implementation="sdpa"  # Use scaled dot-product attention (faster)
+        attn_implementation="flash_attention_2"  # flash attention for speed
     )
 
-    # 5. Configure LoRA (Parameter Efficient Fine-Tuning)
-    # ---------------------------------------------------
-    # Instead of training all params, we train a tiny adapter.
+    # Compile model for faster training (PyTorch 2.0+)
+    model = torch.compile(model, mode="reduce-overhead")
+
+    # 4. Configure LoRA
     peft_config = LoraConfig(
         r=16,
         lora_alpha=64,
@@ -173,8 +93,7 @@ def main():
         lora_dropout=0.05,
     )
 
-    # 6. Initialize GRPO Trainer
-    # --------------------------
+    # 5. Initialize GRPO Trainer
     # Determine training duration based on mode
     if args.test:
         max_steps = 100  # Quick test run
@@ -203,7 +122,7 @@ def main():
         save_steps=save_steps,
         gradient_accumulation_steps=2,  # Accumulate gradients to simulate larger batch size
         gradient_checkpointing=True,    # Enable to save memory and allow larger batches
-        # dataloader_num_workers=4,       # Parallel data loading to reduce CPU bottleneck
+        dataloader_num_workers=4,       # Parallel data loading to reduce CPU bottleneck
         report_to="tensorboard",        # Save training metrics to TensorBoard
         logging_dir=f"logs",  # TensorBoard log directory
     )
@@ -216,8 +135,7 @@ def main():
         peft_config=peft_config,
     )
 
-    # 7. Start Training!
-    # ------------------
+    # 6. Start Training!
     print("Starting GRPO training...")
     trainer.train()
 

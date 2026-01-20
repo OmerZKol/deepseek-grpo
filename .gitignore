@@ -5,3 +5,9 @@ __pycache__/
 *.pyo
 *.pyd
 grpo-math
+grpo-math-output.zip
+logs-output.zip
+notebook.ipynb
+comparison_results.json
+logs/
+notebooks/compare_models.ipynb

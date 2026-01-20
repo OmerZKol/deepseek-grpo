@@ -17,10 +17,12 @@ This implementation is optimised for small LLMs (< 1B parameters) on consumer ha
 ```
 src/
 ├── train_minimal.py                 # Main training script with rule-based rewards
-└── train_grpo_with_reward_model.py  # Training with more complex reward models
+├── train_grpo_with_reward_model.py  # Training with more complex reward models
+├── compare_models.py                # Evaluate trained vs base model on test set
+└── utils.py                         # Shared utilities (answer extraction, prompts)
 
 notebooks/
-└── compare_models.ipynb             # Compare base model vs trained model performance
+└── compare_models.ipynb             # Interactive model comparison notebook
 ```
 
 ## Installation
@@ -79,7 +81,35 @@ This script demonstrates:
 
 ### Model Comparison
 
-Use the notebook [compare_models.ipynb](notebooks/compare_models.ipynb) to evaluate the trained model against the base model:
+Evaluate trained model vs base model on the GSM8K test set:
+
+```bash
+# Full evaluation (1,319 test samples)
+python src/compare_models.py
+
+# Quick test with subset
+python src/compare_models.py --num_samples 50
+
+# Specify output file
+python src/compare_models.py --output results/my_comparison.json
+```
+
+The comparison script:
+- Evaluates both base and trained models on the test set
+- Calculates accuracy and format compliance rates
+- **Computes reward metrics** (format reward: 0.5, accuracy reward: 1.0)
+- Shows average rewards per sample for each model
+- **Saves detailed results to JSON** including all metrics and improvements
+- Displays example comparisons to see model outputs side-by-side
+
+Output includes:
+- Accuracy and format compliance percentages
+- Average format reward (0.0-0.5 per sample)
+- Average accuracy reward (0.0-1.0 per sample)
+- Average total reward (sum of format + accuracy)
+- Improvements (trained model vs base model)
+
+Or use the notebook [compare_models.ipynb](notebooks/compare_models.ipynb) for interactive exploration.
 
 ## Configuration
 
