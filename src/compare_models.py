@@ -364,8 +364,8 @@ def main():
     print(f"{'Std Length (chars)':<25} {base_metrics['std_response_length']:>15.1f} {trained_metrics['std_response_length']:>15.1f}")
 
     # Save results to JSON
-    # save_results(base_metrics, trained_metrics, "comparison_results.json")
-    save_examples(base_metrics, trained_metrics, "comparison_examples.json")
+    save_results(base_metrics, trained_metrics, "comparison_results.json")
+    # save_examples(base_metrics, trained_metrics, "comparison_examples.json")
 
     # Print examples
     if args.show_examples > 0:
