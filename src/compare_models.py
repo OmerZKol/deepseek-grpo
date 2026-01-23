@@ -9,6 +9,7 @@ Usage:
 import argparse
 import json
 import torch
+import numpy as np
 from datetime import datetime
 from pathlib import Path
 from datasets import load_dataset
@@ -18,7 +19,7 @@ from tqdm import tqdm
 
 from utils import (
     ANSWER_TAG_PATTERN,
-    extract_answer_from_tags,
+    extract_last_number,
     extract_gold_answer,
     format_prompt,
     format_reward_func,
@@ -27,7 +28,9 @@ from utils import (
 
 # Configuration
 BASE_MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-TRAINED_MODEL_PATH = "grpo-math"
+BASE_MODEL_NAME = "Qwen2.5-0.5B-Instruct"
+TRAINED_MODEL_PATH = "grpo-math-models"
+TRAINED_MODEL_NAME = "GRPO-Trained-Qwen2.5-0.5B"
 MAX_NEW_TOKENS = 768
 
 
@@ -68,6 +71,8 @@ def generate_answer(model, tokenizer, prompt, device):
             max_new_tokens=MAX_NEW_TOKENS,
             do_sample=False,  # Greedy decoding for consistency
             pad_token_id=tokenizer.pad_token_id,
+            stop_strings=["</answer>"],
+            tokenizer=tokenizer,
         )
 
     # Decode only the generated part
@@ -97,8 +102,8 @@ def evaluate_model(model, tokenizer, dataset, device, model_name):
         if has_format:
             format_correct += 1
 
-        # Check accuracy
-        pred_answer = extract_answer_from_tags(completion)
+        # Check accuracy - Extract last number from entire output (independent of format)
+        pred_answer = extract_last_number(completion)
         gold_answer = extract_gold_answer(example["answer"])
 
         is_correct = False
@@ -123,9 +128,20 @@ def evaluate_model(model, tokenizer, dataset, device, model_name):
     # Calculate rewards using the same functions from training
     format_rewards = format_reward_func(completions)
     accuracy_rewards = accuracy_reward_func(completions, answers)
+    total_rewards = [f + a for f, a in zip(format_rewards, accuracy_rewards)]
 
     total_format_reward = sum(format_rewards)
     total_accuracy_reward = sum(accuracy_rewards)
+
+    # Calculate response length statistics
+    response_lengths = [len(completion) for completion in completions]
+    mean_response_length = np.mean(response_lengths)
+    std_response_length = np.std(response_lengths)
+
+    # Calculate reward standard deviations
+    std_format_reward = np.std(format_rewards)
+    std_accuracy_reward = np.std(accuracy_rewards)
+    std_total_reward = np.std(total_rewards)
 
     return {
         "accuracy": correct / total * 100,
@@ -138,6 +154,11 @@ def evaluate_model(model, tokenizer, dataset, device, model_name):
         "total_format_reward": total_format_reward,
         "total_accuracy_reward": total_accuracy_reward,
         "avg_total_reward": (total_format_reward + total_accuracy_reward) / total,
+        "mean_response_length": float(mean_response_length),
+        "std_response_length": float(std_response_length),
+        "std_format_reward": float(std_format_reward),
+        "std_accuracy_reward": float(std_accuracy_reward),
+        "std_total_reward": float(std_total_reward),
         "results": results,
     }
 
@@ -152,7 +173,7 @@ def save_results(base_metrics, trained_metrics, output_file="comparison_results.
     results_data = {
         "timestamp": datetime.now().isoformat(),
         "base_model": {
-            "model_id": BASE_MODEL_ID,
+            "model_id": BASE_MODEL_NAME,
             "accuracy": base_metrics["accuracy"],
             "format_rate": base_metrics["format_rate"],
             "correct": base_metrics["correct"],
@@ -163,9 +184,14 @@ def save_results(base_metrics, trained_metrics, output_file="comparison_results.
             "avg_total_reward": base_metrics["avg_total_reward"],
             "total_format_reward": base_metrics["total_format_reward"],
             "total_accuracy_reward": base_metrics["total_accuracy_reward"],
+            "std_format_reward": base_metrics["std_format_reward"],
+            "std_accuracy_reward": base_metrics["std_accuracy_reward"],
+            "std_total_reward": base_metrics["std_total_reward"],
+            "mean_response_length": base_metrics["mean_response_length"],
+            "std_response_length": base_metrics["std_response_length"],
         },
         "trained_model": {
-            "model_id": TRAINED_MODEL_PATH,
+            "model_id": TRAINED_MODEL_NAME,
             "accuracy": trained_metrics["accuracy"],
             "format_rate": trained_metrics["format_rate"],
             "correct": trained_metrics["correct"],
@@ -176,6 +202,11 @@ def save_results(base_metrics, trained_metrics, output_file="comparison_results.
             "avg_total_reward": trained_metrics["avg_total_reward"],
             "total_format_reward": trained_metrics["total_format_reward"],
             "total_accuracy_reward": trained_metrics["total_accuracy_reward"],
+            "std_format_reward": trained_metrics["std_format_reward"],
+            "std_accuracy_reward": trained_metrics["std_accuracy_reward"],
+            "std_total_reward": trained_metrics["std_total_reward"],
+            "mean_response_length": trained_metrics["mean_response_length"],
+            "std_response_length": trained_metrics["std_response_length"],
         },
         "improvements": {
             "accuracy": trained_metrics["accuracy"] - base_metrics["accuracy"],
@@ -183,6 +214,7 @@ def save_results(base_metrics, trained_metrics, output_file="comparison_results.
             "avg_format_reward": trained_metrics["avg_format_reward"] - base_metrics["avg_format_reward"],
             "avg_accuracy_reward": trained_metrics["avg_accuracy_reward"] - base_metrics["avg_accuracy_reward"],
             "avg_total_reward": trained_metrics["avg_total_reward"] - base_metrics["avg_total_reward"],
+            "mean_response_length": trained_metrics["mean_response_length"] - base_metrics["mean_response_length"],
         },
     }
 
@@ -190,6 +222,48 @@ def save_results(base_metrics, trained_metrics, output_file="comparison_results.
         json.dump(results_data, f, indent=2)
 
     print(f"\nResults saved to: {output_path.absolute()}")
+
+
+def save_examples(base_metrics, trained_metrics, output_file="comparison_examples.json"):
+    """Save detailed example comparisons to a JSON file."""
+    # Create output directory if it doesn't exist
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Prepare examples data
+    examples_data = {
+        "timestamp": datetime.now().isoformat(),
+        "base_model": BASE_MODEL_NAME,
+        "trained_model": TRAINED_MODEL_NAME,
+        "total_examples": len(base_metrics["results"]),
+        "examples": []
+    }
+
+    # Combine base and trained results for each example
+    for i, (base_result, trained_result) in enumerate(zip(base_metrics["results"], trained_metrics["results"])):
+        example = {
+            "example_id": i,
+            "question": base_result["question"],
+            "gold_answer": base_result["gold_answer"],
+            "base_model": {
+                "predicted_answer": base_result["pred_answer"],
+                "completion": base_result["completion"],
+                "is_correct": base_result["is_correct"],
+                "has_format": base_result["has_format"]
+            },
+            "trained_model": {
+                "predicted_answer": trained_result["pred_answer"],
+                "completion": trained_result["completion"],
+                "is_correct": trained_result["is_correct"],
+                "has_format": trained_result["has_format"]
+            }
+        }
+        examples_data["examples"].append(example)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(examples_data, f, indent=2, ensure_ascii=False)
+
+    print(f"Examples saved to: {output_path.absolute()}")
 
 
 def print_examples(base_results, trained_results, num_examples=3):
@@ -277,8 +351,21 @@ def main():
     print(f"{'Avg Accuracy Reward':<25} {base_metrics['avg_accuracy_reward']:>15.3f} {trained_metrics['avg_accuracy_reward']:>15.3f} {accuracy_reward_diff:>+15.3f}")
     print(f"{'Avg Total Reward':<25} {base_metrics['avg_total_reward']:>15.3f} {trained_metrics['avg_total_reward']:>15.3f} {total_reward_diff:>+15.3f}")
 
+    print(f"\n{'Reward Std Dev':<25} {'Base Model':>15} {'Trained Model':>15}")
+    print("-" * 70)
+    print(f"{'Std Format Reward':<25} {base_metrics['std_format_reward']:>15.3f} {trained_metrics['std_format_reward']:>15.3f}")
+    print(f"{'Std Accuracy Reward':<25} {base_metrics['std_accuracy_reward']:>15.3f} {trained_metrics['std_accuracy_reward']:>15.3f}")
+    print(f"{'Std Total Reward':<25} {base_metrics['std_total_reward']:>15.3f} {trained_metrics['std_total_reward']:>15.3f}")
+
+    response_length_diff = trained_metrics['mean_response_length'] - base_metrics['mean_response_length']
+    print(f"\n{'Response Length':<25} {'Base Model':>15} {'Trained Model':>15} {'Difference':>15}")
+    print("-" * 70)
+    print(f"{'Mean Length (chars)':<25} {base_metrics['mean_response_length']:>15.1f} {trained_metrics['mean_response_length']:>15.1f} {response_length_diff:>+15.1f}")
+    print(f"{'Std Length (chars)':<25} {base_metrics['std_response_length']:>15.1f} {trained_metrics['std_response_length']:>15.1f}")
+
     # Save results to JSON
-    save_results(base_metrics, trained_metrics, "comparison_results.json")
+    # save_results(base_metrics, trained_metrics, "comparison_results.json")
+    save_examples(base_metrics, trained_metrics, "comparison_examples.json")
 
     # Print examples
     if args.show_examples > 0:

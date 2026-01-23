@@ -102,9 +102,9 @@ def format_reward_func(completions, **kwargs):
 
 def accuracy_reward_func(completions, answer, **kwargs):
     """
-    Reward Correctness: Extracts the number from the XML and compares to ground truth.
-    Uses the last number found in the answer tags to handle cases where the model
-    shows its work (e.g., "<answer>10 + 5 = 15</answer>" extracts 15).
+    Reward Correctness: Extracts the last number from the completion and compares to ground truth.
+    This is independent of format - it will find the last number anywhere in the output,
+    regardless of whether it's in <answer> tags or not.
 
     Args:
         completions: List of completion strings
@@ -117,7 +117,7 @@ def accuracy_reward_func(completions, answer, **kwargs):
 
     for completion, correct_answer in zip(completions, answer):
         try:
-            pred_val = extract_answer_from_tags(completion)
+            pred_val = extract_last_number(completion)
             gold_val = extract_gold_answer(correct_answer)
 
             if pred_val is None or gold_val is None:

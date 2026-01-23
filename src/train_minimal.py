@@ -6,10 +6,6 @@ from peft import LoraConfig
 from trl import GRPOTrainer, GRPOConfig
 
 from utils import (
-    ANSWER_TAG_PATTERN,
-    extract_last_number,
-    extract_answer_from_tags,
-    extract_gold_answer,
     format_prompt,
     format_reward_func,
     accuracy_reward_func,
@@ -18,7 +14,7 @@ from utils import (
 # 1. Setup Configuration
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 # MODEL_ID = "HuggingFaceTB/SmolLM-135M-Instruct"
-OUTPUT_DIR = "grpo-math"
+OUTPUT_DIR = "grpo-math-model"
 
 # GRPO specific parameters
 NUM_GENERATIONS = 12  # Group size (G): How many outputs to generate per prompt
@@ -144,6 +140,7 @@ def main():
         "top_p": 0.9,
         "pad_token_id": tokenizer.pad_token_id,
         "eos_token_id": tokenizer.eos_token_id,
+        "stop_strings": ["</answer>"],
     }
 
     trainer = GRPOTrainer(

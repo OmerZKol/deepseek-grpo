@@ -5,6 +5,7 @@ __pycache__/
 *.pyo
 *.pyd
 grpo-math
+grpo-math-models/checkpoint-*/
 grpo-math-output.zip
 logs-output.zip
 notebook.ipynb

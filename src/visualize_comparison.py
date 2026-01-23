@@ -23,10 +23,10 @@ def create_comparison_plots(results, output_file=None):
     """Create comprehensive comparison plots."""
     # Set up the plot style
     plt.style.use('seaborn-v0_8-darkgrid')
-    fig = plt.figure(figsize=(16, 10))
+    fig = plt.figure(figsize=(20, 14))
 
-    # Create grid for subplots
-    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    # Create grid for subplots - expanded to 4x3 for more metrics
+    gs = fig.add_gridspec(4, 3, hspace=0.35, wspace=0.3)
 
     base = results["base_model"]
     trained = results["trained_model"]
@@ -142,14 +142,68 @@ def create_comparison_plots(results, output_file=None):
                 ha='center', va='bottom' if height > 0 else 'top',
                 fontsize=8, fontweight='bold')
 
-    # 7. Summary Table (bottom - spanning all columns)
-    ax7 = fig.add_subplot(gs[2, :])
-    ax7.axis('off')
+    # 7. Response Length Comparison (third row left)
+    ax7 = fig.add_subplot(gs[2, 0])
+    length_values = [base["mean_response_length"], trained["mean_response_length"]]
+    bars7 = ax7.bar(models, length_values, color=colors, alpha=0.8, edgecolor='black')
+    ax7.set_ylabel('Mean Response Length (chars)', fontsize=11, fontweight='bold')
+    ax7.set_title('Response Length Comparison', fontsize=12, fontweight='bold')
+
+    for bar in bars7:
+        height = bar.get_height()
+        ax7.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.0f}',
+                ha='center', va='bottom', fontweight='bold')
+
+    # 8. Response Length Std Deviation (third row middle)
+    ax8 = fig.add_subplot(gs[2, 1])
+    length_std_values = [base["std_response_length"], trained["std_response_length"]]
+    bars8 = ax8.bar(models, length_std_values, color=colors, alpha=0.8, edgecolor='black')
+    ax8.set_ylabel('Std Dev (chars)', fontsize=11, fontweight='bold')
+    ax8.set_title('Response Length Variability', fontsize=12, fontweight='bold')
+
+    for bar in bars8:
+        height = bar.get_height()
+        ax8.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.0f}',
+                ha='center', va='bottom', fontweight='bold')
+
+    # 9. Reward Standard Deviations (third row right)
+    ax9 = fig.add_subplot(gs[2, 2])
+    reward_std_types = ['Format\nReward', 'Accuracy\nReward', 'Total\nReward']
+    base_reward_stds = [base["std_format_reward"], base["std_accuracy_reward"], base["std_total_reward"]]
+    trained_reward_stds = [trained["std_format_reward"], trained["std_accuracy_reward"], trained["std_total_reward"]]
+
+    x = np.arange(len(reward_std_types))
+    width = 0.35
+
+    bars9_1 = ax9.bar(x - width/2, base_reward_stds, width, label='Base Model',
+                      color='#FF6B6B', alpha=0.8, edgecolor='black')
+    bars9_2 = ax9.bar(x + width/2, trained_reward_stds, width, label='Trained Model',
+                      color='#4ECDC4', alpha=0.8, edgecolor='black')
+
+    ax9.set_ylabel('Std Deviation', fontsize=11, fontweight='bold')
+    ax9.set_title('Reward Consistency (Lower = More Consistent)', fontsize=12, fontweight='bold')
+    ax9.set_xticks(x)
+    ax9.set_xticklabels(reward_std_types)
+    ax9.legend()
+
+    # Add value labels
+    for bars in [bars9_1, bars9_2]:
+        for bar in bars:
+            height = bar.get_height()
+            ax9.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.3f}',
+                    ha='center', va='bottom', fontsize=8)
+
+    # 10. Summary Table (bottom - spanning all columns)
+    ax10 = fig.add_subplot(gs[3, :])
+    ax10.axis('off')
 
     # Create summary table data
     table_data = [
-        ['Metric', 'Base Model', 'Trained Model', 'Improvement'],
-        ['─' * 25, '─' * 15, '─' * 15, '─' * 15],
+        ['Metric', 'Base Model', 'Trained Model', 'Improvement/Diff'],
+        ['─' * 30, '─' * 15, '─' * 15, '─' * 15],
         ['Accuracy', f'{base["accuracy"]:.2f}%', f'{trained["accuracy"]:.2f}%',
          f'{improvements["accuracy"]:+.2f}%'],
         ['Format Compliance', f'{base["format_rate"]:.2f}%', f'{trained["format_rate"]:.2f}%',
@@ -167,22 +221,36 @@ def create_comparison_plots(results, output_file=None):
         ['Avg Total Reward', f'{base["avg_total_reward"]:.4f}',
          f'{trained["avg_total_reward"]:.4f}',
          f'{improvements["avg_total_reward"]:+.4f}'],
+        ['', '', '', ''],
+        ['Mean Response Length', f'{base["mean_response_length"]:.1f}',
+         f'{trained["mean_response_length"]:.1f}',
+         f'{improvements["mean_response_length"]:+.1f}'],
+        ['Std Response Length', f'{base["std_response_length"]:.1f}',
+         f'{trained["std_response_length"]:.1f}', '—'],
+        ['', '', '', ''],
+        ['Std Format Reward', f'{base["std_format_reward"]:.4f}',
+         f'{trained["std_format_reward"]:.4f}', '—'],
+        ['Std Accuracy Reward', f'{base["std_accuracy_reward"]:.4f}',
+         f'{trained["std_accuracy_reward"]:.4f}', '—'],
+        ['Std Total Reward', f'{base["std_total_reward"]:.4f}',
+         f'{trained["std_total_reward"]:.4f}', '—'],
     ]
 
-    table = ax7.table(cellText=table_data, cellLoc='left', loc='center',
-                     colWidths=[0.25, 0.25, 0.25, 0.25])
+    table = ax10.table(cellText=table_data, cellLoc='left', loc='center',
+                     colWidths=[0.30, 0.23, 0.23, 0.24])
     table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1, 2)
+    table.set_fontsize(9)
+    table.scale(1, 1.8)
 
     # Style the header row
     for i in range(4):
         table[(0, i)].set_facecolor('#4ECDC4')
         table[(0, i)].set_text_props(weight='bold', color='white')
 
-    # Style separator row
-    for i in range(4):
-        table[(1, i)].set_facecolor('#f0f0f0')
+    # Style separator rows
+    for sep_row in [1, 5, 9, 12]:
+        for i in range(4):
+            table[(sep_row, i)].set_facecolor('#f0f0f0')
 
     # Add title and timestamp
     fig.suptitle(f'Model Comparison:\n {base["model_id"]} vs {trained["model_id"]}',
@@ -227,6 +295,17 @@ def print_summary(results):
     print(f"{'Avg Format Reward':<25} {base['avg_format_reward']:>15.4f} {trained['avg_format_reward']:>15.4f} {improvements['avg_format_reward']:>+15.4f}")
     print(f"{'Avg Accuracy Reward':<25} {base['avg_accuracy_reward']:>15.4f} {trained['avg_accuracy_reward']:>15.4f} {improvements['avg_accuracy_reward']:>+15.4f}")
     print(f"{'Avg Total Reward':<25} {base['avg_total_reward']:>15.4f} {trained['avg_total_reward']:>15.4f} {improvements['avg_total_reward']:>+15.4f}")
+
+    print(f"\n{'Reward Consistency':<25} {'Base':>15} {'Trained':>15}")
+    print("-" * 70)
+    print(f"{'Std Format Reward':<25} {base['std_format_reward']:>15.4f} {trained['std_format_reward']:>15.4f}")
+    print(f"{'Std Accuracy Reward':<25} {base['std_accuracy_reward']:>15.4f} {trained['std_accuracy_reward']:>15.4f}")
+    print(f"{'Std Total Reward':<25} {base['std_total_reward']:>15.4f} {trained['std_total_reward']:>15.4f}")
+
+    print(f"\n{'Response Length':<25} {'Base':>15} {'Trained':>15} {'Difference':>15}")
+    print("-" * 70)
+    print(f"{'Mean Length (chars)':<25} {base['mean_response_length']:>15.1f} {trained['mean_response_length']:>15.1f} {improvements['mean_response_length']:>+15.1f}")
+    print(f"{'Std Length (chars)':<25} {base['std_response_length']:>15.1f} {trained['std_response_length']:>15.1f}")
 
     print("\n" + "=" * 70 + "\n")
 
