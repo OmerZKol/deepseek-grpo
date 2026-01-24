@@ -23,10 +23,10 @@ def create_comparison_plots(results, output_file=None):
     """Create comprehensive comparison plots."""
     # Set up the plot style
     plt.style.use('seaborn-v0_8-darkgrid')
-    fig = plt.figure(figsize=(20, 14))
+    fig = plt.figure(figsize=(20, 16))
 
     # Create grid for subplots - expanded to 4x3 for more metrics
-    gs = fig.add_gridspec(4, 3, hspace=0.35, wspace=0.3)
+    gs = fig.add_gridspec(4, 3, hspace=0.5, wspace=0.3, top=0.93, bottom=0.05)
 
     base = results["base_model"]
     trained = results["trained_model"]
@@ -254,17 +254,16 @@ def create_comparison_plots(results, output_file=None):
 
     # Add title and timestamp
     fig.suptitle(f'Model Comparison:\n {base["model_id"]} vs {trained["model_id"]}',
-                fontsize=16, fontweight='bold', y=0.98)
+                fontsize=16, fontweight='bold')
 
     timestamp_text = f'Generated: {results["timestamp"]}'
     fig.text(0.5, 0.01, timestamp_text, ha='center', fontsize=9, style='italic')
 
     # Save or show
     if output_file:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.3)
         print(f"✓ Visualization saved to: {output_file}")
     else:
-        plt.tight_layout()
         plt.show()
 
     plt.close()

@@ -3,6 +3,6 @@ transformers
 peft
 trl
 flash-attn>=2.7.0
-torch==2.5.1+cu126
+torch==2.8.0
 tensorboard
 matplotlib
