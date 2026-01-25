@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-01-23T23:31:57.811778",
+  "base_model": {
+    "model_id": "Qwen2.5-0.5B-Instruct",
+    "accuracy": 33.88931008339651,
+    "format_rate": 19.56027293404094,
+    "correct": 447,
+    "format_correct": 258,
+    "total": 1319,
+    "avg_format_reward": 0.0978013646702047,
+    "avg_accuracy_reward": 0.3388931008339651,
+    "avg_total_reward": 0.43669446550416985,
+    "total_format_reward": 129.0,
+    "total_accuracy_reward": 447.0,
+    "std_format_reward": 0.19833198280597103,
+    "std_accuracy_reward": 0.47333346283683037,
+    "std_total_reward": 0.48476719428321546,
+    "mean_response_length": 685.1137225170584,
+    "std_response_length": 440.59779583703516
+  },
+  "trained_model": {
+    "model_id": "GRPO-Trained-Qwen2.5-0.5B",
+    "accuracy": 52.463987869598185,
+    "format_rate": 99.46929492039423,
+    "correct": 692,
+    "format_correct": 1312,
+    "total": 1319,
+    "avg_format_reward": 0.4973464746019712,
+    "avg_accuracy_reward": 0.5246398786959818,
+    "avg_total_reward": 1.021986353297953,
+    "total_format_reward": 656.0,
+    "total_accuracy_reward": 692.0,
+    "std_format_reward": 0.036327971344081694,
+    "std_accuracy_reward": 0.4993925073305038,
+    "std_total_reward": 0.5034847449185536,
+    "mean_response_length": 942.1819560272934,
+    "std_response_length": 291.629564913401
+  },
+  "improvements": {
+    "accuracy": 18.574677786201676,
+    "format_rate": 79.9090219863533,
+    "avg_format_reward": 0.3995451099317665,
+    "avg_accuracy_reward": 0.1857467778620167,
+    "avg_total_reward": 0.5852918877937832,
+    "mean_response_length": 257.068233510235
+  }
+}

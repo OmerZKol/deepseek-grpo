@@ -9,5 +9,5 @@ grpo-math-models/checkpoint-*/
 grpo-math-output.zip
 logs-output.zip
 notebook.ipynb
-comparison_results.json
 notebooks/compare_models.ipynb
+src/visualize_training_logs.py

@@ -4,9 +4,22 @@ Fine-tuning Qwen2.5-0.5B on GSM8K mathematical reasoning using GRPO (Group Relat
 
 ## Results
 
-![Model Comparison](visualisations/model_comparison.png)
+### Performance Charts
+![Model Comparison Charts](visualisations/model_comparison_charts.png)
+
+### Summary Table
+![Model Comparison Table](visualisations/model_comparison_table.png)
+
+### Training Information
+<!-- ![Training Information](visualisations/training_reward.png) -->
+<img src="visualisations/training_reward.png" alt="Training Reward Information" height="300" />
+<img src="visualisations/training_extra.png" alt="Extra Training Information" height="300" />
 
 GRPO training improves both accuracy and format compliance on mathematical reasoning tasks. The trained model learns to provide structured answers in `<answer>...</answer>` tags while maintaining reasoning quality.
+
+## Pre-trained Model
+
+A trained model is available in `grpo-math-models/` with training logs in `logs/`. Evaluation results are in `comparison_results.json` and `visualisations/comparison_examples.html`.
 
 ## Quick Start
 

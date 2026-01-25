@@ -1,9 +1,13 @@
 """
 Visualize model comparison results from comparison_results.json
 
+Generates two separate files:
+    1. *_charts.png - Bar chart comparisons
+    2. *_table.png - Summary table
+
 Usage:
     python src/visualize_comparison.py
-    python src/visualize_comparison.py --input comparison_results.json --output my_plot.png
+    python src/visualize_comparison.py --input comparison_results.json --output visualisations/my_comparison
 """
 
 import argparse
@@ -19,14 +23,14 @@ def load_results(input_file):
         return json.load(f)
 
 
-def create_comparison_plots(results, output_file=None):
-    """Create comprehensive comparison plots."""
+def create_comparison_charts(results, output_file=None):
+    """Create bar chart comparisons."""
     # Set up the plot style
     plt.style.use('seaborn-v0_8-darkgrid')
-    fig = plt.figure(figsize=(20, 16))
+    fig = plt.figure(figsize=(20, 12))
 
-    # Create grid for subplots - expanded to 4x3 for more metrics
-    gs = fig.add_gridspec(4, 3, hspace=0.5, wspace=0.3, top=0.93, bottom=0.05)
+    # Create grid for subplots - 3x3 grid for charts only
+    gs = fig.add_gridspec(3, 3, hspace=0.4, wspace=0.3, top=0.92, bottom=0.08)
 
     base = results["base_model"]
     trained = results["trained_model"]
@@ -103,73 +107,9 @@ def create_comparison_plots(results, output_file=None):
             ax4.text(bar.get_x() + bar.get_width()/2., height,
                     f'{height:.3f}',
                     ha='center', va='bottom', fontsize=8)
-
-    # 5. Improvements (middle middle)
+            
+    # 5. Reward Standard Deviations (third row right)
     ax5 = fig.add_subplot(gs[1, 1])
-    improvement_metrics = ['Accuracy', 'Format Rate']
-    improvement_values = [improvements["accuracy"], improvements["format_rate"]]
-    bars5 = ax5.bar(improvement_metrics, improvement_values,
-                    color=['#95E1D3', '#F38181'], alpha=0.8, edgecolor='black')
-    ax5.set_ylabel('Improvement (%)', fontsize=11, fontweight='bold')
-    ax5.set_title('Performance Improvements', fontsize=12, fontweight='bold')
-    ax5.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
-
-    for bar in bars5:
-        height = bar.get_height()
-        ax5.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:+.1f}%',
-                ha='center', va='bottom' if height > 0 else 'top',
-                fontweight='bold')
-
-    # 6. Reward Improvements (middle right)
-    ax6 = fig.add_subplot(gs[1, 2])
-    reward_imp_types = ['Format\nReward', 'Accuracy\nReward', 'Total\nReward']
-    reward_imp_values = [
-        improvements["avg_format_reward"],
-        improvements["avg_accuracy_reward"],
-        improvements["avg_total_reward"]
-    ]
-    bars6 = ax6.bar(reward_imp_types, reward_imp_values,
-                    color=['#AA96DA', '#FCBAD3', '#FFFFD2'], alpha=0.8, edgecolor='black')
-    ax6.set_ylabel('Improvement', fontsize=11, fontweight='bold')
-    ax6.set_title('Reward Improvements', fontsize=12, fontweight='bold')
-    ax6.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
-
-    for bar in bars6:
-        height = bar.get_height()
-        ax6.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:+.3f}',
-                ha='center', va='bottom' if height > 0 else 'top',
-                fontsize=8, fontweight='bold')
-
-    # 7. Response Length Comparison (third row left)
-    ax7 = fig.add_subplot(gs[2, 0])
-    length_values = [base["mean_response_length"], trained["mean_response_length"]]
-    bars7 = ax7.bar(models, length_values, color=colors, alpha=0.8, edgecolor='black')
-    ax7.set_ylabel('Mean Response Length (chars)', fontsize=11, fontweight='bold')
-    ax7.set_title('Response Length Comparison', fontsize=12, fontweight='bold')
-
-    for bar in bars7:
-        height = bar.get_height()
-        ax7.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:.0f}',
-                ha='center', va='bottom', fontweight='bold')
-
-    # 8. Response Length Std Deviation (third row middle)
-    ax8 = fig.add_subplot(gs[2, 1])
-    length_std_values = [base["std_response_length"], trained["std_response_length"]]
-    bars8 = ax8.bar(models, length_std_values, color=colors, alpha=0.8, edgecolor='black')
-    ax8.set_ylabel('Std Dev (chars)', fontsize=11, fontweight='bold')
-    ax8.set_title('Response Length Variability', fontsize=12, fontweight='bold')
-
-    for bar in bars8:
-        height = bar.get_height()
-        ax8.text(bar.get_x() + bar.get_width()/2., height,
-                f'{height:.0f}',
-                ha='center', va='bottom', fontweight='bold')
-
-    # 9. Reward Standard Deviations (third row right)
-    ax9 = fig.add_subplot(gs[2, 2])
     reward_std_types = ['Format\nReward', 'Accuracy\nReward', 'Total\nReward']
     base_reward_stds = [base["std_format_reward"], base["std_accuracy_reward"], base["std_total_reward"]]
     trained_reward_stds = [trained["std_format_reward"], trained["std_accuracy_reward"], trained["std_total_reward"]]
@@ -177,28 +117,111 @@ def create_comparison_plots(results, output_file=None):
     x = np.arange(len(reward_std_types))
     width = 0.35
 
-    bars9_1 = ax9.bar(x - width/2, base_reward_stds, width, label='Base Model',
+    bars5_1 = ax5.bar(x - width/2, base_reward_stds, width, label='Base Model',
                       color='#FF6B6B', alpha=0.8, edgecolor='black')
-    bars9_2 = ax9.bar(x + width/2, trained_reward_stds, width, label='Trained Model',
+    bars5_2 = ax5.bar(x + width/2, trained_reward_stds, width, label='Trained Model',
                       color='#4ECDC4', alpha=0.8, edgecolor='black')
 
-    ax9.set_ylabel('Std Deviation', fontsize=11, fontweight='bold')
-    ax9.set_title('Reward Consistency (Lower = More Consistent)', fontsize=12, fontweight='bold')
-    ax9.set_xticks(x)
-    ax9.set_xticklabels(reward_std_types)
-    ax9.legend()
+    ax5.set_ylabel('Std Deviation', fontsize=11, fontweight='bold')
+    ax5.set_title('Reward Consistency (Lower = More Consistent)', fontsize=12, fontweight='bold')
+    ax5.set_xticks(x)
+    ax5.set_xticklabels(reward_std_types)
+    ax5.legend()
 
     # Add value labels
-    for bars in [bars9_1, bars9_2]:
+    for bars in [bars5_1, bars5_2]:
         for bar in bars:
             height = bar.get_height()
-            ax9.text(bar.get_x() + bar.get_width()/2., height,
+            ax5.text(bar.get_x() + bar.get_width()/2., height,
                     f'{height:.3f}',
                     ha='center', va='bottom', fontsize=8)
 
-    # 10. Summary Table (bottom - spanning all columns)
-    ax10 = fig.add_subplot(gs[3, :])
-    ax10.axis('off')
+    # 6. Improvements (middle middle)
+    ax6 = fig.add_subplot(gs[1, 2])
+    improvement_metrics = ['Accuracy', 'Format Rate']
+    improvement_values = [improvements["accuracy"], improvements["format_rate"]]
+    bars6 = ax6.bar(improvement_metrics, improvement_values,
+                    color=['#95E1D3', '#F38181'], alpha=0.8, edgecolor='black')
+    ax6.set_ylabel('Improvement (%)', fontsize=11, fontweight='bold')
+    ax6.set_title('Performance Improvements', fontsize=12, fontweight='bold')
+    ax6.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+
+    for bar in bars6:
+        height = bar.get_height()
+        ax6.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:+.1f}%',
+                ha='center', va='bottom' if height > 0 else 'top',
+                fontweight='bold')
+
+    # 7. Reward Improvements (middle right)
+    ax7 = fig.add_subplot(gs[2, 0])
+    reward_imp_types = ['Format\nReward', 'Accuracy\nReward', 'Total\nReward']
+    reward_imp_values = [
+        improvements["avg_format_reward"],
+        improvements["avg_accuracy_reward"],
+        improvements["avg_total_reward"]
+    ]
+    bars7 = ax7.bar(reward_imp_types, reward_imp_values,
+                    color=['#AA96DA', '#FCBAD3', '#FFFFD2'], alpha=0.8, edgecolor='black')
+    ax7.set_ylabel('Improvement', fontsize=11, fontweight='bold')
+    ax7.set_title('Reward Improvements', fontsize=12, fontweight='bold')
+    ax7.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+
+    for bar in bars7:
+        height = bar.get_height()
+        ax7.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:+.3f}',
+                ha='center', va='bottom' if height > 0 else 'top',
+                fontsize=8, fontweight='bold')
+
+    # 8. Response Length Comparison (third row left)
+    ax8 = fig.add_subplot(gs[2, 1])
+    length_values = [base["mean_response_length"], trained["mean_response_length"]]
+    bars8 = ax8.bar(models, length_values, color=colors, alpha=0.8, edgecolor='black')
+    ax8.set_ylabel('Mean Response Length (chars)', fontsize=11, fontweight='bold')
+    ax8.set_title('Response Length Comparison', fontsize=12, fontweight='bold')
+    for bar in bars8:
+        height = bar.get_height()
+        ax8.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.0f}',
+                ha='center', va='bottom', fontweight='bold')
+
+    # 9. Response Length Std Deviation (third row middle)
+    ax9 = fig.add_subplot(gs[2, 2])
+    length_std_values = [base["std_response_length"], trained["std_response_length"]]
+    bars9 = ax9.bar(models, length_std_values, color=colors, alpha=0.8, edgecolor='black')
+    ax9.set_ylabel('Std Dev (chars)', fontsize=11, fontweight='bold')
+    ax9.set_title('Response Length Variability', fontsize=12, fontweight='bold')
+
+    for bar in bars9:
+        height = bar.get_height()
+        ax9.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.0f}',
+                ha='center', va='bottom', fontweight='bold')
+
+    # Add title
+    fig.suptitle(f'Model Comparison:\n {base["model_id"]} vs {trained["model_id"]}',
+                fontsize=16, fontweight='bold')
+
+    # Save or show
+    if output_file:
+        plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.2)
+        print(f"✓ Charts saved to: {output_file}")
+    else:
+        plt.show()
+
+    plt.close()
+
+
+def create_summary_table(results, output_file=None):
+    """Create summary table as a separate figure."""
+    base = results["base_model"]
+    trained = results["trained_model"]
+    improvements = results["improvements"]
+
+    # Create figure for table
+    fig, ax = plt.subplots(figsize=(14, 8.5))
+    ax.axis('off')
 
     # Create summary table data
     table_data = [
@@ -236,11 +259,11 @@ def create_comparison_plots(results, output_file=None):
          f'{trained["std_total_reward"]:.4f}', '—'],
     ]
 
-    table = ax10.table(cellText=table_data, cellLoc='left', loc='center',
+    table = ax.table(cellText=table_data, cellLoc='left', loc='center',
                      colWidths=[0.30, 0.23, 0.23, 0.24])
     table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    table.scale(1, 1.8)
+    table.set_fontsize(11)
+    table.scale(1, 2.5)
 
     # Style the header row
     for i in range(4):
@@ -253,16 +276,16 @@ def create_comparison_plots(results, output_file=None):
             table[(sep_row, i)].set_facecolor('#f0f0f0')
 
     # Add title and timestamp
-    fig.suptitle(f'Model Comparison:\n {base["model_id"]} vs {trained["model_id"]}',
-                fontsize=16, fontweight='bold')
+    fig.suptitle(f'Model Comparison Summary\n{base["model_id"]} vs {trained["model_id"]}',
+                fontsize=16, fontweight='bold', y=0.96)
 
-    timestamp_text = f'Generated: {results["timestamp"]}'
-    fig.text(0.5, 0.01, timestamp_text, ha='center', fontsize=9, style='italic')
+    # timestamp_text = f'Generated: {results["timestamp"]}'
+    # fig.text(0.5, 0.02, timestamp_text, ha='center', fontsize=10, style='italic')
 
     # Save or show
     if output_file:
         plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.3)
-        print(f"✓ Visualization saved to: {output_file}")
+        print(f"✓ Table saved to: {output_file}")
     else:
         plt.show()
 
@@ -321,7 +344,7 @@ def main():
         "--output",
         type=str,
         default=None,
-        help="Output file for the plot (default: visualisations/model_comparison.png)",
+        help="Output file prefix for the plots (default: visualisations/model_comparison)",
     )
     args = parser.parse_args()
 
@@ -338,29 +361,34 @@ def main():
             print(f"Error: Input file '{args.input}' not found!")
             return
 
-    # Determine output path - default to visualisations directory
-    output_path = None
+    # Determine output paths - default to visualisations directory
     if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = project_root / output_path
+        output_prefix = Path(args.output)
+        if not output_prefix.is_absolute():
+            output_prefix = project_root / output_prefix
     else:
         # Default output in visualisations directory
-        output_path = project_root / "visualisations" / "model_comparison.png"
+        output_prefix = project_root / "visualisations" / "model_comparison"
+
+    # Create output paths for charts and table
+    charts_path = output_prefix.parent / f"{output_prefix.stem}_charts.png"
+    table_path = output_prefix.parent / f"{output_prefix.stem}_table.png"
 
     # Create visualisations directory if it doesn't exist
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    charts_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load results
     print(f"Loading results from: {input_path}")
     results = load_results(input_path)
 
-    # Print summary
-    # print_summary(results)
+    # Create visualizations
+    print("Creating visualizations...")
+    create_comparison_charts(results, str(charts_path))
+    create_summary_table(results, str(table_path))
 
-    # Create plots
-    print("Creating visualization...")
-    create_comparison_plots(results, str(output_path))
+    print(f"\n✓ All visualizations complete!")
+    print(f"  - Charts: {charts_path}")
+    print(f"  - Table: {table_path}")
 
 
 if __name__ == "__main__":
